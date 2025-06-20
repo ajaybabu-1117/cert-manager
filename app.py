@@ -7,40 +7,54 @@ from dotenv import load_dotenv
 import os
 import io
 
-# Load environment variables from .env
+# Load environment variables
 load_dotenv()
 
 # Flask setup
 app = Flask(__name__)
 app.secret_key = os.getenv("SECRET_KEY", "super-secret-key")
 
-# MongoDB connection (Render-friendly)
+# MongoDB connection with proper TLS settings (important for Render/Atlas)
 MONGO_URI = os.getenv("MONGO_URI")
-client = MongoClient(MONGO_URI, tls=True, tlsAllowInvalidCertificates=True)
-db = client.get_default_database()
-fs = GridFS(db)
+try:
+    client = MongoClient(
+        MONGO_URI,
+        tls=True,
+        tlsAllowInvalidCertificates=False,  # use valid SSL certs
+        serverSelectionTimeoutMS=5000       # avoid long timeouts
+    )
+    db = client.get_default_database()
+    fs = GridFS(db)
+except Exception as e:
+    print(f"❌ MongoDB connection failed: {e}")
+    fs = None  # fallback
 
-# File restrictions
+# File settings
 ALLOWED_EXTENSIONS = {'pdf', 'png', 'jpg', 'jpeg'}
-MAX_CONTENT_LENGTH = 5 * 1024 * 1024  # 5MB max
+MAX_CONTENT_LENGTH = 5 * 1024 * 1024  # 5MB
 app.config['MAX_CONTENT_LENGTH'] = MAX_CONTENT_LENGTH
 
-# Helper to check allowed extensions
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 # Homepage
 @app.route('/')
 def index():
+    if not fs:
+        return "<h3>MongoDB connection failed. Check your credentials or IP whitelist.</h3>", 500
     try:
         files = fs.find()
         return render_template("index.html", files=files)
     except Exception as e:
         return f"<h3>Error loading page: {e}</h3>", 500
 
-# Upload certificate
+# Upload
 @app.route('/upload', methods=['POST'])
 def upload():
+    if not fs:
+        flash('MongoDB connection failed.', 'danger')
+        return redirect('/')
+
     title = request.form.get('title', '').strip()
     file = request.files.get('file')
 
@@ -60,9 +74,12 @@ def upload():
         flash(f'Upload failed: {e}', 'danger')
     return redirect('/')
 
-# Download certificate
+# Download
 @app.route('/download/<file_id>')
 def download(file_id):
+    if not fs:
+        flash('MongoDB connection failed.', 'danger')
+        return redirect('/')
     try:
         file = fs.get(ObjectId(file_id))
         return send_file(io.BytesIO(file.read()), download_name=file.filename, as_attachment=True)
@@ -70,9 +87,12 @@ def download(file_id):
         flash(f'File not found: {e}', 'danger')
         return redirect('/')
 
-# Delete certificate
+# Delete
 @app.route('/delete/<file_id>')
 def delete(file_id):
+    if not fs:
+        flash('MongoDB connection failed.', 'danger')
+        return redirect('/')
     try:
         fs.delete(ObjectId(file_id))
         flash('Certificate deleted.', 'success')
@@ -80,7 +100,7 @@ def delete(file_id):
         flash(f'Delete failed: {e}', 'danger')
     return redirect('/')
 
-# Run server (important for Render!)
+# Main
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port)
