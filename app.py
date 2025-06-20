@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, redirect, send_file, flash
+from flask import Flask, render_template, request, redirect, send_file, flash, session, url_for
 from pymongo import MongoClient
 from gridfs import GridFS
 from bson import ObjectId
@@ -7,54 +7,65 @@ from dotenv import load_dotenv
 import os
 import io
 
-# Load environment variables
+# Load .env variables
 load_dotenv()
 
-# Flask setup
 app = Flask(__name__)
 app.secret_key = os.getenv("SECRET_KEY", "super-secret-key")
 
-# MongoDB connection with proper TLS settings (important for Render/Atlas)
+# MongoDB connection
 MONGO_URI = os.getenv("MONGO_URI")
-try:
-    client = MongoClient(
-        MONGO_URI,
-        tls=True,
-        tlsAllowInvalidCertificates=False,  # use valid SSL certs
-        serverSelectionTimeoutMS=5000       # avoid long timeouts
-    )
-    db = client.get_default_database()
-    fs = GridFS(db)
-except Exception as e:
-    print(f"❌ MongoDB connection failed: {e}")
-    fs = None  # fallback
+client = MongoClient(MONGO_URI, tls=True, tlsAllowInvalidCertificates=True)
+db = client.get_default_database()
+fs = GridFS(db)
 
-# File settings
+# Config
 ALLOWED_EXTENSIONS = {'pdf', 'png', 'jpg', 'jpeg'}
 MAX_CONTENT_LENGTH = 5 * 1024 * 1024  # 5MB
 app.config['MAX_CONTENT_LENGTH'] = MAX_CONTENT_LENGTH
 
+# Helper
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
-# Homepage
+# 🔐 Login page
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    if request.method == 'POST':
+        password = request.form.get('password')
+        if password == '1117':
+            session['logged_in'] = True
+            flash('Login successful!', 'success')
+            return redirect('/')
+        else:
+            flash('Incorrect password.', 'danger')
+    return render_template('login.html')
+
+# 🔓 Logout
+@app.route('/logout')
+def logout():
+    session.pop('logged_in', None)
+    flash('Logged out successfully.', 'info')
+    return redirect('/login')
+
+# Home
 @app.route('/')
 def index():
-    if not fs:
-        return "<h3>MongoDB connection failed. Check your credentials or IP whitelist.</h3>", 500
+    if not session.get('logged_in'):
+        return redirect('/login')
     try:
         files = fs.find()
         return render_template("index.html", files=files)
     except Exception as e:
-        return f"<h3>Error loading page: {e}</h3>", 500
+        flash(f"Error loading files: {e}", "danger")
+        return redirect('/login')
 
 # Upload
 @app.route('/upload', methods=['POST'])
 def upload():
-    if not fs:
-        flash('MongoDB connection failed.', 'danger')
-        return redirect('/')
-
+    if not session.get('logged_in'):
+        return redirect('/login')
+    
     title = request.form.get('title', '').strip()
     file = request.files.get('file')
 
@@ -77,9 +88,9 @@ def upload():
 # Download
 @app.route('/download/<file_id>')
 def download(file_id):
-    if not fs:
-        flash('MongoDB connection failed.', 'danger')
-        return redirect('/')
+    if not session.get('logged_in'):
+        return redirect('/login')
+    
     try:
         file = fs.get(ObjectId(file_id))
         return send_file(io.BytesIO(file.read()), download_name=file.filename, as_attachment=True)
@@ -90,9 +101,9 @@ def download(file_id):
 # Delete
 @app.route('/delete/<file_id>')
 def delete(file_id):
-    if not fs:
-        flash('MongoDB connection failed.', 'danger')
-        return redirect('/')
+    if not session.get('logged_in'):
+        return redirect('/login')
+    
     try:
         fs.delete(ObjectId(file_id))
         flash('Certificate deleted.', 'success')
@@ -100,7 +111,6 @@ def delete(file_id):
         flash(f'Delete failed: {e}', 'danger')
     return redirect('/')
 
-# Main
 if __name__ == '__main__':
-    port = int(os.environ.get("PORT", 5000))
+    port = int(os.environ.get("PORT", 10000))
     app.run(host='0.0.0.0', port=port)
