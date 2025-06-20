@@ -1,5 +1,4 @@
 Flask
 pymongo
-gridfs
 dnspython
 python-dotenv
