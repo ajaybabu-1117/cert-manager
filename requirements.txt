@@ -1,4 +1,5 @@
-flask
-flask-pymongo
+Flask
+pymongo
+gridfs
+dnspython
 python-dotenv
-gunicorn
