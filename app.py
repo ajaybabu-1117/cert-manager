@@ -7,35 +7,38 @@ from dotenv import load_dotenv
 import os
 import io
 
-# Load environment variables
+# Load environment variables from .env
 load_dotenv()
 
+# Flask setup
 app = Flask(__name__)
 app.secret_key = os.getenv("SECRET_KEY", "super-secret-key")
 
-# Connect to MongoDB with TLS
+# MongoDB connection (Render-friendly)
 MONGO_URI = os.getenv("MONGO_URI")
 client = MongoClient(MONGO_URI, tls=True, tlsAllowInvalidCertificates=True)
 db = client.get_default_database()
 fs = GridFS(db)
 
-# File upload settings
+# File restrictions
 ALLOWED_EXTENSIONS = {'pdf', 'png', 'jpg', 'jpeg'}
-MAX_CONTENT_LENGTH = 5 * 1024 * 1024  # 5MB
+MAX_CONTENT_LENGTH = 5 * 1024 * 1024  # 5MB max
 app.config['MAX_CONTENT_LENGTH'] = MAX_CONTENT_LENGTH
 
+# Helper to check allowed extensions
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
+# Homepage
 @app.route('/')
 def index():
     try:
         files = fs.find()
         return render_template("index.html", files=files)
     except Exception as e:
-        flash(f"Error loading files: {e}", "danger")
-        return redirect('/')
+        return f"<h3>Error loading page: {e}</h3>", 500
 
+# Upload certificate
 @app.route('/upload', methods=['POST'])
 def upload():
     title = request.form.get('title', '').strip()
@@ -57,6 +60,7 @@ def upload():
         flash(f'Upload failed: {e}', 'danger')
     return redirect('/')
 
+# Download certificate
 @app.route('/download/<file_id>')
 def download(file_id):
     try:
@@ -66,6 +70,7 @@ def download(file_id):
         flash(f'File not found: {e}', 'danger')
         return redirect('/')
 
+# Delete certificate
 @app.route('/delete/<file_id>')
 def delete(file_id):
     try:
@@ -75,6 +80,7 @@ def delete(file_id):
         flash(f'Delete failed: {e}', 'danger')
     return redirect('/')
 
+# Run server (important for Render!)
 if __name__ == '__main__':
-    port = int(os.environ.get("PORT", 10000))  # Required for Render
+    port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port)
