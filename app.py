@@ -19,26 +19,23 @@ client = MongoClient(MONGO_URI, tls=True, tlsAllowInvalidCertificates=True)
 db = client.get_default_database()
 fs = GridFS(db)
 
-# Allowed file settings
+# File upload settings
 ALLOWED_EXTENSIONS = {'pdf', 'png', 'jpg', 'jpeg'}
 MAX_CONTENT_LENGTH = 5 * 1024 * 1024  # 5MB
 app.config['MAX_CONTENT_LENGTH'] = MAX_CONTENT_LENGTH
 
-# Check valid file type
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
-# Home page
-@app.route('/', methods=['GET', 'HEAD'])
+@app.route('/')
 def index():
     try:
         files = fs.find()
         return render_template("index.html", files=files)
     except Exception as e:
-        flash("Error loading files.", "danger")
+        flash(f"Error loading files: {e}", "danger")
         return redirect('/')
 
-# Upload certificate
 @app.route('/upload', methods=['POST'])
 def upload():
     title = request.form.get('title', '').strip()
@@ -57,28 +54,27 @@ def upload():
         fs.put(file, filename=filename)
         flash('Certificate uploaded successfully!', 'success')
     except Exception as e:
-        flash('Upload failed.', 'danger')
+        flash(f'Upload failed: {e}', 'danger')
     return redirect('/')
 
-# Download certificate
-@app.route('/download/<file_id>', methods=['GET', 'HEAD'])
+@app.route('/download/<file_id>')
 def download(file_id):
     try:
         file = fs.get(ObjectId(file_id))
         return send_file(io.BytesIO(file.read()), download_name=file.filename, as_attachment=True)
     except Exception as e:
-        flash('File not found.', 'danger')
+        flash(f'File not found: {e}', 'danger')
         return redirect('/')
 
-# Delete certificate
-@app.route('/delete/<file_id>', methods=['GET', 'HEAD'])
+@app.route('/delete/<file_id>')
 def delete(file_id):
     try:
         fs.delete(ObjectId(file_id))
         flash('Certificate deleted.', 'success')
     except Exception as e:
-        flash('Delete failed.', 'danger')
+        flash(f'Delete failed: {e}', 'danger')
     return redirect('/')
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    port = int(os.environ.get("PORT", 10000))  # Required for Render
+    app.run(host='0.0.0.0', port=port)
