@@ -14,9 +14,6 @@ load_dotenv()
 app = Flask(__name__)
 app.secret_key = os.getenv("SECRET_KEY", "super-secret-key")
 
-# Session timeout (30 min)
-app.permanent_session_lifetime = 1800
-
 
 # MongoDB connection
 MONGO_URI = os.getenv("MONGO_URI")
@@ -62,8 +59,8 @@ def login():
 
         if password == correct_password:
 
+            # Temporary session (ends when browser closes)
             session["logged_in"] = True
-            session.permanent = True
 
             flash("Login successful!", "success")
             return redirect("/")
