@@ -14,6 +14,10 @@ load_dotenv()
 app = Flask(__name__)
 app.secret_key = os.getenv("SECRET_KEY", "super-secret-key")
 
+# Session timeout (30 min)
+app.permanent_session_lifetime = 1800
+
+
 # MongoDB connection
 MONGO_URI = os.getenv("MONGO_URI")
 
@@ -35,15 +39,32 @@ def allowed_file(filename):
     return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXTENSIONS
 
 
+# 🔐 FORCE LOGIN FOR ALL PAGES
+@app.before_request
+def require_login():
+
+    allowed_routes = ["login", "static"]
+
+    if request.endpoint not in allowed_routes and not session.get("logged_in"):
+        return redirect("/login")
+
+
 # 🔐 Login
 @app.route("/login", methods=["GET", "POST"])
 def login():
 
     if request.method == "POST":
+
         password = request.form.get("password")
 
-        if password == "1117":
+        # Get password from environment
+        correct_password = os.getenv("APP_PASSWORD", "1117")
+
+        if password == correct_password:
+
             session["logged_in"] = True
+            session.permanent = True
+
             flash("Login successful!", "success")
             return redirect("/")
 
@@ -57,7 +78,7 @@ def login():
 @app.route("/logout")
 def logout():
 
-    session.pop("logged_in", None)
+    session.clear()
     flash("Logged out successfully.", "info")
     return redirect("/login")
 
@@ -65,9 +86,6 @@ def logout():
 # 🏠 Home
 @app.route("/")
 def index():
-
-    if not session.get("logged_in"):
-        return redirect("/login")
 
     try:
         files = fs.find()
@@ -81,9 +99,6 @@ def index():
 # 📤 Upload
 @app.route("/upload", methods=["POST"])
 def upload():
-
-    if not session.get("logged_in"):
-        return redirect("/login")
 
     title = request.form.get("title", "").strip()
     file = request.files.get("file")
@@ -122,9 +137,6 @@ def upload():
 @app.route("/download/<file_id>")
 def download(file_id):
 
-    if not session.get("logged_in"):
-        return redirect("/login")
-
     try:
         file = fs.get(ObjectId(file_id))
 
@@ -143,9 +155,6 @@ def download(file_id):
 # 🗑️ Delete
 @app.route("/delete/<file_id>")
 def delete(file_id):
-
-    if not session.get("logged_in"):
-        return redirect("/login")
 
     try:
         fs.delete(ObjectId(file_id))
