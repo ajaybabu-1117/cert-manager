@@ -7,12 +7,17 @@ from dotenv import load_dotenv
 import os
 import io
 
+
 # Load .env variables
 load_dotenv()
+
 
 # App setup
 app = Flask(__name__)
 app.secret_key = os.getenv("SECRET_KEY", "super-secret-key")
+
+# Session ends when browser closes
+app.config["SESSION_PERMANENT"] = False
 
 
 # MongoDB connection
@@ -25,6 +30,7 @@ client = MongoClient(MONGO_URI)
 db = client.get_default_database()
 fs = GridFS(db)
 
+
 # Config
 ALLOWED_EXTENSIONS = {"pdf", "png", "jpg", "jpeg"}
 MAX_CONTENT_LENGTH = 5 * 1024 * 1024  # 5MB
@@ -36,7 +42,7 @@ def allowed_file(filename):
     return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXTENSIONS
 
 
-# 🔐 FORCE LOGIN FOR ALL PAGES
+# 🔐 FORCE LOGIN FOR ALL ROUTES
 @app.before_request
 def require_login():
 
@@ -50,18 +56,19 @@ def require_login():
 @app.route("/login", methods=["GET", "POST"])
 def login():
 
+    # Default password (change if needed)
+    DEFAULT_PASSWORD = "1117"
+
     if request.method == "POST":
 
         password = request.form.get("password")
 
-        # Get password from environment
-        correct_password = os.getenv("APP_PASSWORD", "1117")
+        # Use ENV password if exists, else default
+        correct_password = os.getenv("APP_PASSWORD", DEFAULT_PASSWORD)
 
         if password == correct_password:
 
-            # Temporary session (ends when browser closes)
             session["logged_in"] = True
-
             flash("Login successful!", "success")
             return redirect("/")
 
@@ -112,10 +119,10 @@ def upload():
         # Get extension
         ext = file.filename.rsplit(".", 1)[1].lower()
 
-        # Safe filename with extension
+        # Safe filename
         filename = secure_filename(f"{title}.{ext}")
 
-        # Save in GridFS with content type
+        # Save to GridFS
         fs.put(
             file,
             filename=filename,
