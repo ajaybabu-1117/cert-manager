@@ -14,7 +14,9 @@ load_dotenv()
 
 # App setup
 app = Flask(__name__)
-app.secret_key = os.getenv("SECRET_KEY", "super-secret-key")
+
+# Fixed secret key (important for sessions on Render)
+app.secret_key = os.getenv("SECRET_KEY") or "my-fixed-secret-key-2026"
 
 # Session ends when browser closes
 app.config["SESSION_PERMANENT"] = False
@@ -37,18 +39,21 @@ MAX_CONTENT_LENGTH = 5 * 1024 * 1024  # 5MB
 app.config["MAX_CONTENT_LENGTH"] = MAX_CONTENT_LENGTH
 
 
-# Helper: check file type
+# Helper
 def allowed_file(filename):
     return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXTENSIONS
 
 
-# 🔐 FORCE LOGIN FOR ALL ROUTES
+# 🔐 FORCE LOGIN (FIXED - NO LOOP)
 @app.before_request
 def require_login():
 
-    allowed_routes = ["login", "static"]
+    # Allow login page + static files
+    if request.path.startswith("/login") or request.path.startswith("/static"):
+        return
 
-    if request.endpoint not in allowed_routes and not session.get("logged_in"):
+    # If not logged in → redirect
+    if not session.get("logged_in"):
         return redirect("/login")
 
 
@@ -56,14 +61,12 @@ def require_login():
 @app.route("/login", methods=["GET", "POST"])
 def login():
 
-    # Default password (change if needed)
     DEFAULT_PASSWORD = "1117"
 
     if request.method == "POST":
 
         password = request.form.get("password")
 
-        # Use ENV password if exists, else default
         correct_password = os.getenv("APP_PASSWORD", DEFAULT_PASSWORD)
 
         if password == correct_password:
@@ -116,7 +119,7 @@ def upload():
         return redirect("/")
 
     try:
-        # Get extension
+        # Extension
         ext = file.filename.rsplit(".", 1)[1].lower()
 
         # Safe filename
